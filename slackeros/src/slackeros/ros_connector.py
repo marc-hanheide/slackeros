@@ -75,18 +75,10 @@ class RosConnector(SlackConnector):
 
     def on_slash(self, param, payload):
         service = payload['text']
-        ret = {
-            'text': 'ROS service to be called: %s' % service
-            # 'attachments': [
-            #     {
-            #         "title": "Synopsis",
-            #         "text": "```\n%s\n```" % pformat(payload)
-            #     }
-            # ]
-        }
-        srv_class = get_service_class_by_name(service)
-        proxy = rospy.ServiceProxy(service, srv_class)
+        ret = {}
         try:
+            srv_class = get_service_class_by_name(service)
+            proxy = rospy.ServiceProxy(service, srv_class)
             ret = "```\n%s\n```" % strify_message(proxy.call())
         except Exception as e:
             ret = '*Failed with exception: %s*' % str(e)
