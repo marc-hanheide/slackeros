@@ -6,6 +6,7 @@ import signal
 from base_connector import SlackConnector
 import rospy
 from std_msgs.msg import String
+from std_srvs.srv import Empty
 
 
 def __signal_handler(signum, frame):
@@ -50,19 +51,23 @@ class RosConnector(SlackConnector):
             ]
         })
 
-    # def on_slash(self, param, payload):
-    #     ret = {
-    #         'text': '_default handler called_',
-    #         'attachments': [
-    #             {
-    #                 "title": "Synopsis",
-    #                 "text": "```\n%s\n```" % pformat(payload)
-    #             }
-    #         ]
-    #     }
-    #     self.send('incoming!')
-    #     logging.info('on_slash(%s, %s)', param, pformat(payload))
-    #     return ret
+    def on_slash(self, param, payload):
+        service = payload['text']
+        ret = {
+            'text': 'ROS service to be called: %s' % service
+            # 'attachments': [
+            #     {
+            #         "title": "Synopsis",
+            #         "text": "```\n%s\n```" % pformat(payload)
+            #     }
+            # ]
+        }
+        proxy = rospy.ServiceProxy(service, Empty)
+        try:
+            proxy.call()
+        except Exception as e:
+            ret = '*Failed with exception: %s*' % str(e)
+        return ret
 
     # def run(self):
     #     web.application.run(self)
