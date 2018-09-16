@@ -1,20 +1,14 @@
-import web
-
-from pprint import pformat
 from os import _exit
 import signal
 from base_connector import SlackConnector
 import rospy
 from std_msgs.msg import String
-from std_srvs.srv import Empty
 from rostopic import get_topic_class
 from rosservice import get_service_class_by_name
-from rosservice import get_service_list, call_service
+from rosservice import get_service_list
 from threading import Thread
 from roslib.message import strify_message
-from slackeros.srv import SlashCommand
 import argparse
-from StringIO import StringIO
 import roslib
 import rosmsg
 
