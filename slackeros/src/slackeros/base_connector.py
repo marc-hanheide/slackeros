@@ -6,6 +6,7 @@ from json import dumps
 from os import _exit
 import signal
 from requests import post
+from os import environ
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -112,7 +113,10 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, __signal_handler)
 
     sc = SlackConnector(
-        incoming_webhook='https://hooks.slack.com/services/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',
+        incoming_webhook=environ.get(
+            'SLACK_WEBHOOK',
+            'https://hooks.slack.com/services/'
+            'TCTBP6280/BCU8QFBE1/l2B4r7TRzLJJ37zyhXqtICov'),
         whitelist_users=['mhanheide']
     )
     sc.run()

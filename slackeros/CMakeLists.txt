@@ -34,6 +34,6 @@ generate_messages(
 catkin_package()
 
 install(PROGRAMS
-  scripts/slackeros.py
+  scripts/slackeros_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
