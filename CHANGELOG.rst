@@ -2,6 +2,12 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* cleaned
+* launch file and configurable port
+* Contributors: Marc Hanheide
+
 0.0.1 (2018-09-16)
 ------------------
 * more bugfixes
