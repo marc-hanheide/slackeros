@@ -100,43 +100,58 @@ class RosConnector(SlackConnector):
         })
 
     def _rostopic(self, args):
-        help_string = '`usage: /rostopic [subscribe|unsubscribe|list] <topic>`'
-        if len(args) < 1:
-            return help_string
+        parser = argparse.ArgumentParser(prog='/rostopic')
+        subparsers = parser.add_subparsers(dest='cmd',
+                                           help='sub-command')
+        subparsers.add_parser('list', help='show topics')
+        subparsers.add_parser(
+            'subscribe', help='subscribe to topic: /rostopic subscribe <topic>'
+            ).add_argument(
+            'topic', help='topic to suscribe to'
+            )
+        subparsers.add_parser(
+            'unsubscribe', help='unsubscribe from topic:'
+            ' /rostopic unsubscribe <topic>'
+            ).add_argument(
+            'topic', help='topic unsubscribe from'
+            )
+
+        try:
+            args = parser.parse_args(args)
+            print args
+        except SystemExit:
+            return '```\n%s\n```' % parser.format_help()
+
+        if args.cmd == 'subscribe':
+            self._subscribe(args.topic)
+            return 'subscribing to `%s`' % args.topic
+        elif args.cmd == 'unsubscribe':
+            self._unsubscribe(args.topic)
+            return 'unsubscribing from `%s`' % args.topic
+        elif args.cmd == 'list':
+            topics = rospy.get_published_topics()
+            tops = [('%s [%s]' % (t[0], t[1])) for t in topics]
+            print tops
+            return {
+                'attachments': [
+                    {
+                        'text': (
+                            '*Currently published topics:*\n```\n%s\n```'
+                            % '\n'.join(tops)),
+                        'author_name': 'ROS master'
+                    },
+                    {
+                        'text': (
+                            '*Currently subscribed by'
+                            ' Slack*:\n```\n%s\n```'
+                            % '\n'.join(self.subs)),
+                        'author_name': 'slackeros'
+                    }
+                ],
+                'text': '_Topics:_'
+            }
         else:
-            cmd = args[0].lower()
-            if cmd == 'subscribe':
-                topic = args[1]
-                self._subscribe(topic)
-                return 'subscribing to `%s`' % topic
-            elif cmd == 'unsubscribe':
-                topic = args[1]
-                self._unsubscribe(topic)
-                return 'unsubscribing from `%s`' % topic
-            elif cmd == 'list':
-                topics = rospy.get_published_topics()
-                tops = [('%s [%s]' % (t[0], t[1])) for t in topics]
-                print tops
-                return {
-                    'attachments': [
-                        {
-                            'text': (
-                                '*Currently published topics:*\n```\n%s\n```'
-                                % '\n'.join(tops)),
-                            'author_name': 'ROS master'
-                        },
-                        {
-                            'text': (
-                                '*Currently subscribed by'
-                                ' Slack*:\n```\n%s\n```'
-                                % '\n'.join(self.subs)),
-                            'author_name': 'slackeros'
-                        }
-                    ],
-                    'text': '_Topics:_'
-                }
-            else:
-                return help_string
+            return help_string
 
     def __call_service(self, service_name, service_args, service_class=None):
         import std_msgs.msg
@@ -185,24 +200,34 @@ class RosConnector(SlackConnector):
                     e, rosmsg.get_srv_text(service_class._type)))
 
     def _rosservice(self, args):
-        help_string = '`usage: /rosservice [call <service> [<args>]|list]`'
-        if len(args) < 1:
-            return help_string
-        else:
-            cmd = args[0].lower()
-            if cmd == 'call':
-                service = args[1]
-                resp = self.__call_service(service, args[2:])
+        parser = argparse.ArgumentParser(prog='/rosservice')
+        subparsers = parser.add_subparsers(dest='cmd',
+                                           help='sub-command')
+        subparsers.add_parser('list', help='show services')
+        subparsers.add_parser(
+            'call', help='call server: /rosservice call <service> [<args>]'
+            ).add_argument(
+            'service', help='topic to suscribe to'
+            )
+
+        try:
+            args, additonal_args = parser.parse_known_args(args)
+        except SystemExit:
+            return '```\n%s\n```' % parser.format_help()
+
+        try:
+            if args.cmd == 'call':
+                resp = self.__call_service(args.service, additonal_args)
                 return {
                     'attachments': [
                         {
                             'text': 'Response:\n```\n%s\n```' % resp,
-                            'author_name': 'service'
+                            'author_name': args.service
                         }
                     ],
-                    'text': '_called `%s`_' % service
+                    'text': '_called `%s`_' % args.service
                 }
-            elif cmd == 'list':
+            elif args.cmd == 'list':
                 services = get_service_list()
                 return {
                     'attachments': [
@@ -215,8 +240,8 @@ class RosConnector(SlackConnector):
                     ],
                     'text': '_Services:_'
                 }
-            else:
-                return help_string
+        except Exception as e:
+            return '```\n%s\n```' % str(e)
 
     def on_slash(self, service, payload):
         args = payload['text'].split(' ')
