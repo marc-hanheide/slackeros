@@ -106,8 +106,13 @@ class SlackConnector(web.application):
         logging.info('on_slash(%s, %s)', param, pformat(payload))
         return ret
 
-    def run(self):
-        web.application.run(self)
+    # def run(self):
+    #     web.application.run(self)
+
+    def run(self, port=8080, *middleware):
+        func = self.wsgifunc(*middleware)
+        return web.httpserver.runsimple(func, ('0.0.0.0', port))
+
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, __signal_handler)
@@ -116,7 +121,7 @@ if __name__ == '__main__':
         incoming_webhook=environ.get(
             'SLACK_WEBHOOK',
             'https://hooks.slack.com/services/'
-            'TCTBP6280/BCU8QFBE1/l2B4r7TRzLJJ37zyhXqtICov'),
+            'XXX/XXX/XXX'),
         whitelist_users=['mhanheide']
     )
     sc.run()

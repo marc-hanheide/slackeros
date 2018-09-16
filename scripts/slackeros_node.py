@@ -15,7 +15,7 @@ if __name__ == '__main__':
     hook = rospy.get_param(
         '~webhook',
         'https://hooks.slack.com/services/'
-        'TCTBP6280/BCU8QFBE1/l2B4r7TRzLJJ37zyhXqtICov')
+        'XXX/XXX/XXX')
     wl_users = rospy.get_param(
         '~users', '')
     wl_channels = rospy.get_param(
@@ -24,6 +24,8 @@ if __name__ == '__main__':
         '~topics', '')
     url_prefix = rospy.get_param(
         '~url_prefix', '')
+    port = rospy.get_param(
+        '~port', 8080)
     rospy.loginfo(
         '\n'
         '  running as %s\n'
@@ -31,14 +33,16 @@ if __name__ == '__main__':
         '    allowed users:          ~users =      "%s"\n'
         '    allowed channels:       ~channels =   "%s"\n'
         '    subscribed topics:      ~topics =     "%s"\n'
-        '    URL webhook prefix:     ~url_prefix = "%s"\n' %
+        '    URL webhook prefix:     ~url_prefix = "%s"\n'
+        '    port:                   ~port = "%d"\n' %
         (
             rospy.get_name(),
             hook,
             wl_users,
             wl_channels,
             topics,
-            url_prefix
+            url_prefix,
+            port
         )
         )
     sc = RosConnector(
@@ -48,4 +52,4 @@ if __name__ == '__main__':
         topics=topics.split(),
         prefix=url_prefix
     )
-    sc.run()
+    sc.run(port=port)
