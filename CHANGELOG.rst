@@ -2,8 +2,8 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.1 (2018-09-16)
+------------------
 * more bugfixes
 * deps
 * deps
