@@ -84,6 +84,7 @@ class SlackConnector(web.application):
             ret = {
                 'text': str(msg)
             }
+        ret["response_type"] = "in_channel"
         return ret
 
     def send(self, msg):

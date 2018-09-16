@@ -1,0 +1,6 @@
+string message
+string[] args
+---
+string text
+string json
+sensor_msgs/Image image
