@@ -88,26 +88,48 @@ class RosConnector(SlackConnector):
             self.subs[topic].unregister()
             del self.subs[topic]
 
+    def _poll(self, topic, timeout=1.5):
+        msg_class, real_topic, _ = get_topic_class(
+            topic, blocking=False)
+        if msg_class is None:
+            return '`topic %s not found`' % topic
+        print msg_class
+        try:
+            msg = rospy.wait_for_message(
+                topic, msg_class, timeout)
+            return self.__generate_output(msg)
+        except Exception as e:
+            return (
+                'no message received after %.1f seconds: %s' % (
+                    timeout,
+                    str(e)
+                    )
+                )
+
+    def __generate_output(self, msg):
+        d = strify_message(msg)
+        # truncate message
+        lines = d.splitlines()
+        if len(lines) > self.max_lines:
+            rospy.loginfo(
+                'output truncated, too long (shown %d of %d lines only).' %
+                (self.max_lines, len(lines)))
+            d = '\n'.join(lines[0:self.max_lines])
+            d += (
+                '\n\n[%s]' %
+                '*** output truncated, too long '
+                '(showing %d of %d lines only). ***' %
+                (self.max_lines, len(lines))
+            )
+        return d
+
     def _to_slack_cb(self, msg, topic):
         last_published = self.last_published[topic]
         now = rospy.Time.now()
         duration_since_last = now - last_published
         if duration_since_last.to_sec() > self.throttle_secs[topic]:
-            d = strify_message(msg)
-            # truncate message
-            lines = d.splitlines()
-            if len(lines) > self.max_lines:
-                rospy.loginfo(
-                    'output truncated, too long (shown %d of %d lines only).' %
-                    (self.max_lines, len(lines)))
-                d = '\n'.join(lines[0:self.max_lines])
-                d += (
-                    '\n\n[%s]' %
-                    '*** output truncated, too long '
-                    '(showing %d of %d lines only). ***' %
-                    (self.max_lines, len(lines))
-                )
-            rospy.loginfo('new message to go to Slack: %s' % d)
+            d = self.__generate_output(msg)
+            # rospy.loginfo('new message to go to Slack: %s' % d)
             self.send({
                 'text': '_New Information on topic %s_' % topic,
                 'attachments': [
@@ -144,6 +166,11 @@ class RosConnector(SlackConnector):
             ).add_argument(
             'topic', help='topic unsubscribe from'
             )
+        subparsers.add_parser(
+            'poll', help='poll one value from topic: /rostopic read <topic>'
+            ).add_argument(
+            'topic', help='topic to read from to'
+            )
 
         try:
             args = parser.parse_args(args)
@@ -157,10 +184,11 @@ class RosConnector(SlackConnector):
         elif args.cmd == 'unsubscribe':
             self._unsubscribe(args.topic)
             return 'unsubscribing from `%s`' % args.topic
+        elif args.cmd == 'poll':
+            return '```\n%s\n```' % self._poll(args.topic)
         elif args.cmd == 'list':
             topics = rospy.get_published_topics()
             tops = [('%s [%s]' % (t[0], t[1])) for t in topics]
-            print tops
             return {
                 'attachments': [
                     {
