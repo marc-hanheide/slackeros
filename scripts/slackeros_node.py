@@ -22,6 +22,8 @@ if __name__ == '__main__':
         '~channels', '')
     topics = rospy.get_param(
         '~topics', '')
+    loggers = rospy.get_param(
+        '~loggers', '/rosout:error')
     url_prefix = rospy.get_param(
         '~url_prefix', '')
     port = rospy.get_param(
@@ -33,6 +35,7 @@ if __name__ == '__main__':
         '    allowed users:          ~users =      "%s"\n'
         '    allowed channels:       ~channels =   "%s"\n'
         '    subscribed topics:      ~topics =     "%s"\n'
+        '    active loggers:         ~loggers =    "%s"\n'
         '    URL webhook prefix:     ~url_prefix = "%s"\n'
         '    port:                   ~port = "%d"\n' %
         (
@@ -41,15 +44,22 @@ if __name__ == '__main__':
             wl_users,
             wl_channels,
             topics,
+            loggers,
             url_prefix,
             port
         )
         )
+    logger_dict = {}
+    for l in loggers.split():
+        (n, l) = l.split(':')
+        logger_dict[n] = l
+
     sc = RosConnector(
         incoming_webhook=hook,
         whitelist_users=wl_users.split(),
         whitelist_channels=wl_channels.split(),
         topics=topics.split(),
+        loggers=logger_dict,
         prefix=url_prefix
     )
     sc.run(port=port)

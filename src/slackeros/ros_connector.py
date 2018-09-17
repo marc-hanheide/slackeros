@@ -12,6 +12,7 @@ import argparse
 import roslib
 import rosmsg
 from collections import defaultdict
+from rosgraph_msgs.msg import Log
 
 
 def __signal_handler(signum, frame):
@@ -22,6 +23,22 @@ def __signal_handler(signum, frame):
 class RosConnector(SlackConnector):
 
     ROS_PREFIX = '/slackeros'
+    LEVEL_SETS = {
+        'info': set([2, 4, 8, 16]),
+        'warn': set([4, 8, 16]),
+        'warning': set([4, 8, 16]),
+        'error': set([8, 16]),
+        'fatal': set([16]),
+        'off': set([])
+    }
+    REVERSE_LEVEL_SET = {
+        0: 'off',
+        1: 'debug',
+        2: 'info',
+        4: 'warn',
+        8: 'error',
+        16: 'fatal'
+    }
 
     def __init__(
         self,
@@ -30,6 +47,7 @@ class RosConnector(SlackConnector):
         whitelist_users=[],
         topics=[ROS_PREFIX + '/to_slack'],
         prefix='',
+        loggers={},
         throttle_secs=5,
         max_lines=50
     ):
@@ -48,13 +66,20 @@ class RosConnector(SlackConnector):
         self.subs = {}
 
         for t in self.topics:
-            print 'topic ', t
             self._subscribe(t)
 
+        self.default_level = 'off'
         self.last_published = defaultdict(rospy.Time)
         self.throttle_count = defaultdict(int)
+        self.active_loggers = defaultdict(lambda: self.default_level)
+        if loggers:
+            self.logger_enabled = True
+            self.active_loggers.update(loggers)
+            self._subscribe('/rosout', self._log_received)
+        else:
+            self.logger_enabled = False
 
-    def _subscribe(self, topic):
+    def _subscribe(self, topic, cb=None):
         class DynSub(Thread):
 
             def __init__(self, topic, cb, connected_cb=None):
@@ -81,7 +106,9 @@ class RosConnector(SlackConnector):
         def __connected(topic, sub):
             self.subs[topic] = sub
 
-        DynSub(topic, self._to_slack_cb, __connected).start()
+        if cb is None:
+            cb = self._to_slack_cb
+        DynSub(topic, cb, __connected).start()
 
     def _unsubscribe(self, topic):
         if topic in self.subs:
@@ -93,7 +120,6 @@ class RosConnector(SlackConnector):
             topic, blocking=False)
         if msg_class is None:
             return '`topic %s not found`' % topic
-        print msg_class
         try:
             msg = rospy.wait_for_message(
                 topic, msg_class, timeout)
@@ -124,6 +150,7 @@ class RosConnector(SlackConnector):
         return d
 
     def _to_slack_cb(self, msg, topic):
+        rospy.loginfo('msg received on topic %s' % topic)
         last_published = self.last_published[topic]
         now = rospy.Time.now()
         duration_since_last = now - last_published
@@ -150,6 +177,133 @@ class RosConnector(SlackConnector):
             rospy.loginfo('topic %s throttled, not publishing' % topic)
             self.throttle_count[topic] += 1
 
+    def _log_received(self, log_entry, topic):
+        # make sure we are not listening to ourselves
+        if log_entry.name == rospy.get_name():
+            return
+        now = rospy.Time.now()
+        level = log_entry.level
+        logger = log_entry.name
+
+        if level not in RosConnector.LEVEL_SETS[
+               self.active_loggers[logger]
+               ]:
+            return
+        last_published = self.last_published['__logger__' + logger]
+
+        duration_since_last = now - last_published
+        if (
+            duration_since_last.to_sec() > self.throttle_secs[topic]
+        ):
+            # rospy.loginfo('new message to go to Slack: %s' % d)
+            self.send({
+                'text': '*`%s`* from node: `%s`\n> *%s*' % (
+                    RosConnector.REVERSE_LEVEL_SET[
+                                    log_entry.level],
+                    logger,
+                    log_entry.msg
+                    ),
+                'attachments': [
+                    {
+                        'text': (
+                            '_file:_ `%s`\n'
+                            '_function:_ `%s`\n'
+                            '_line:_ `%s`\n'
+                            '_topics:_ `%s`\n' %
+                            (
+                                log_entry.file,
+                                log_entry.function,
+                                log_entry.line,
+                                log_entry.topics,
+                                )
+                            ),
+                        'author_name': '/rosout from "%s"' % logger,
+                        'footer': (
+                            'last of %d throttled events.' %
+                            self.throttle_count['__logger__' + logger]
+                            if self.throttle_count['__logger__' + logger] > 0
+                            else 'last and only event since last published')
+                    }
+                ]
+            })
+            self.last_published['__logger__' + logger] = now
+            self.throttle_count['__logger__' + logger] = 0
+        else:
+            rospy.loginfo('logger %s throttled, not publishing' % logger)
+            self.throttle_count['__logger__' + logger] += 1
+
+    def _roslogger(self, args):
+        parser = argparse.ArgumentParser(prog='/roslogger')
+        subparsers = parser.add_subparsers(dest='cmd',
+                                           help='sub-command')
+        subparsers.add_parser('enable', help='enable logging')
+        subparsers.add_parser('disable', help='disable logging')
+        subparsers.add_parser('list', help='show loggers')
+        parser_set = subparsers.add_parser(
+            'set', help='set level node: /roslogger set <nodename> {%s}' %
+            '|'. join(RosConnector.LEVEL_SETS.keys())
+            )
+        parser_set.add_argument(
+            'logger', help='logger to set'
+            )
+        parser_set.add_argument(
+            'level', help='level to set logger to',
+            choices=RosConnector.LEVEL_SETS.keys()
+            )
+        subparsers.add_parser(
+            'setall', help='set level for nodes: /roslogger setall  {%s}' %
+            '|'. join(RosConnector.LEVEL_SETS.keys())
+        ).add_argument(
+            'level', help='level to set logger to',
+            choices=RosConnector.LEVEL_SETS.keys()
+            )
+
+        try:
+            args = parser.parse_args(args)
+        except SystemExit:
+            return '```\n%s\n```' % parser.format_help()
+
+        if args.cmd == 'enable':
+            self._subscribe('/rosout', self._log_received)
+            self.logger_enabled = True
+            return 'subscribing to `/rosout`'
+        elif args.cmd == 'disable':
+            self._unsubscribe('/rosout')
+            self.logger_enabled = False
+            return 'unsubscribing from `/rosout`'
+        elif args.cmd == 'set':
+            self.active_loggers[args.logger] = args.level.lower()
+            return 'logger `%s` set to level `%s`' % (
+                args.logger,
+                args.level
+                )
+        elif args.cmd == 'setall':
+            self.default_level = args.level.lower()
+            for l in self.active_loggers:
+                self.active_loggers[l] = self.default_level
+            return 'all loggers set to level `%s`' % (
+                args.level
+                )
+        elif args.cmd == 'list':
+            loggers = [
+                ('%s [%s]' % (l, self.active_loggers[l]))
+                for l in self.active_loggers]
+            return {
+                'attachments': [
+                    {
+                        'text': (
+                            '*configured loggers:*\n```\n%s\n```'
+                            % '\n'.join(loggers)),
+                        'author_name': 'slackerros'
+                    }
+                ],
+                'text': (
+                    '_logging enabled_'
+                    if self.logger_enabled else '~logging disabled~'
+                    )
+            }
+
+
     def _rostopic(self, args):
         parser = argparse.ArgumentParser(prog='/rostopic')
         subparsers = parser.add_subparsers(dest='cmd',
@@ -174,7 +328,6 @@ class RosConnector(SlackConnector):
 
         try:
             args = parser.parse_args(args)
-            print args
         except SystemExit:
             return '```\n%s\n```' % parser.format_help()
 
@@ -207,8 +360,6 @@ class RosConnector(SlackConnector):
                 ],
                 'text': '_Topics:_'
             }
-        else:
-            return help_string
 
     def __call_service(self, service_name, service_args, service_class=None):
         import std_msgs.msg
@@ -307,6 +458,8 @@ class RosConnector(SlackConnector):
             return self._rostopic(args)
         elif service == 'rosservice':
             return self._rosservice(args)
+        elif service == 'roslogger':
+            return self._roslogger(args)
         else:
             args[0] = self.ROS_PREFIX + '/' + service
             return self._rosservice(args)
@@ -324,7 +477,6 @@ if __name__ == '__main__':
         '~channels', '')
     topics = rospy.get_param(
         '~topics', '')
-    print topics
     url_prefix = rospy.get_param(
         '~url_prefix', '')
     sc = RosConnector(
