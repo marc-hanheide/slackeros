@@ -11,6 +11,7 @@ from roslib.message import strify_message
 import argparse
 import roslib
 import rosmsg
+from collections import defaultdict
 
 
 def __signal_handler(signum, frame):
@@ -28,12 +29,16 @@ class RosConnector(SlackConnector):
         whitelist_channels=[],
         whitelist_users=[],
         topics=[ROS_PREFIX + '/to_slack'],
-        prefix=''
+        prefix='',
+        throttle_secs=5,
+        max_lines=50
     ):
         self.incoming_webhook = incoming_webhook
         self.whitelist_channels = set(whitelist_channels)
         self.whitelist_users = set(whitelist_users)
         self.topics = set(topics)
+        self.throttle_secs = defaultdict(lambda: throttle_secs)
+        self.max_lines = max_lines
 
         SlackConnector.__init__(
             self, incoming_webhook,
@@ -45,6 +50,9 @@ class RosConnector(SlackConnector):
         for t in self.topics:
             print 'topic ', t
             self._subscribe(t)
+
+        self.last_published = defaultdict(rospy.Time)
+        self.throttle_count = defaultdict(int)
 
     def _subscribe(self, topic):
         class DynSub(Thread):
@@ -73,25 +81,52 @@ class RosConnector(SlackConnector):
         def __connected(topic, sub):
             self.subs[topic] = sub
 
-        DynSub(topic, self.to_slack_cb, __connected).start()
+        DynSub(topic, self._to_slack_cb, __connected).start()
 
     def _unsubscribe(self, topic):
         if topic in self.subs:
             self.subs[topic].unregister()
             del self.subs[topic]
 
-    def to_slack_cb(self, msg, topic):
-        d = strify_message(msg)
-        rospy.loginfo('new message to go to Slack: %s' % d)
-        self.send({
-            'text': '_New Information on topic %s_' % topic,
-            'attachments': [
-                {
-                    'text': "```\n%s\n```" % d,
-                    'author_name': topic
-                }
-            ]
-        })
+    def _to_slack_cb(self, msg, topic):
+        last_published = self.last_published[topic]
+        now = rospy.Time.now()
+        duration_since_last = now - last_published
+        if duration_since_last.to_sec() > self.throttle_secs[topic]:
+            d = strify_message(msg)
+            # truncate message
+            lines = d.splitlines()
+            if len(lines) > self.max_lines:
+                rospy.loginfo(
+                    'output truncated, too long (shown %d of %d lines only).' %
+                    (self.max_lines, len(lines)))
+                d = '\n'.join(lines[0:self.max_lines])
+                d += (
+                    '\n\n[%s]' %
+                    '*** output truncated, too long '
+                    '(showing %d of %d lines only). ***' %
+                    (self.max_lines, len(lines))
+                )
+            rospy.loginfo('new message to go to Slack: %s' % d)
+            self.send({
+                'text': '_New Information on topic %s_' % topic,
+                'attachments': [
+                    {
+                        'text': "```\n%s\n```" % d,
+                        'author_name': topic,
+                        'footer': (
+                            'last of %d throttled events.' %
+                            self.throttle_count[topic]
+                            if self.throttle_count[topic] > 0
+                            else 'last and only event since last published')
+                    }
+                ]
+            })
+            self.last_published[topic] = now
+            self.throttle_count[topic] = 0
+        else:
+            rospy.loginfo('topic %s throttled, not publishing' % topic)
+            self.throttle_count[topic] += 1
 
     def _rostopic(self, args):
         parser = argparse.ArgumentParser(prog='/rostopic')
