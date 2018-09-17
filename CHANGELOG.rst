@@ -2,8 +2,8 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.4 (2018-09-17)
+------------------
 * roslogger works. fixes `#4 <https://github.com/marc-hanheide/slackeros/issues/4>`_
 * Contributors: Marc Hanheide
 
