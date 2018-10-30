@@ -13,7 +13,11 @@ import roslib
 import rosmsg
 from collections import defaultdict
 from rosgraph_msgs.msg import Log
-
+#
+import cv2
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+#
 
 def __signal_handler(signum, frame):
     print "stopped."
@@ -43,6 +47,7 @@ class RosConnector(SlackConnector):
     def __init__(
         self,
         incoming_webhook=None,
+        access_token=None,
         whitelist_channels=[],
         whitelist_users=[],
         topics=[ROS_PREFIX + '/to_slack'],
@@ -52,6 +57,7 @@ class RosConnector(SlackConnector):
         max_lines=50
     ):
         self.incoming_webhook = incoming_webhook
+        self.access_token = access_token
         self.whitelist_channels = set(whitelist_channels)
         self.whitelist_users = set(whitelist_users)
         self.topics = set(topics)
@@ -171,6 +177,29 @@ class RosConnector(SlackConnector):
                     }
                 ]
             })
+            # upload image
+            image = rospy.wait_for_message("/head_xtion/rgb/image_mono", Image, timeout=0.2)
+            try:
+                # Convert your ROS Image message to OpenCV2
+                cv2_img = bridge.imgmsg_to_cv2(msg, "mono8")
+            except CvBridgeError, e:
+                rospy.logwarn(e)
+            else:
+                # Save your OpenCV2 image as a jpeg 
+                image_file = 'camera_image.jpeg'
+                cv2.imwrite(image_file, cv2_img)
+                rospy.loginfo("Image to be uploaded saved in %s" % image_file)
+                # upload to slack
+                data = {
+                    'token': self.access_token,
+                    'channels': 'administration',
+                    'file': open(image_file, 'rb'),
+                    'filename': image_file,
+                    'filetype': 'jpeg',
+                    'title': 'Image from the robot camera'
+                }
+                headers = {'Content-type': 'multipart/form-data'}
+                self.send(data, headers)
             self.last_published[topic] = now
             self.throttle_count[topic] = 0
         else:
@@ -471,6 +500,9 @@ if __name__ == '__main__':
         '~webhook',
         'https://hooks.slack.com/services/'
         'TCTBP6280/BCU8QFBE1/l2B4r7TRzLJJ37zyhXqtICov')
+    token = rospy.get_param(
+        '~access_token',
+        'xoxp-23984754863-2348975623103')
     wl_users = rospy.get_param(
         '~users', '')
     wl_channels = rospy.get_param(
@@ -481,6 +513,7 @@ if __name__ == '__main__':
         '~url_prefix', '')
     sc = RosConnector(
         incoming_webhook=hook,
+        access_token=token,
         whitelist_users=wl_users.split(' '),
         whitelist_channels=wl_channels.split(' '),
         topics=topics.split(' '),

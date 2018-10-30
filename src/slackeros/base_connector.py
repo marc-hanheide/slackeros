@@ -88,10 +88,10 @@ class SlackConnector(web.application):
         ret["response_type"] = "in_channel"
         return ret
 
-    def send(self, msg):
+    def send(self, msg, headers={'Content-type': 'application/json'}):
         if self.incoming_webhook:
             try:
-                post(self.incoming_webhook, json=self._generate_message(msg))
+                post(self.incoming_webhook, json=self._generate_message(msg), headers=headers)
             except Exception as e:
                 print(str(e))
 
