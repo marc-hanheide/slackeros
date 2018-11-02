@@ -93,7 +93,7 @@ class SlackConnector(web.application):
             try:
                 post(self.incoming_webhook, json=self._generate_message(msg))
             except Exception as e:
-                print(str(e))
+                print('exception when sending: %s:\n%s' % (str(e), str(msg)))
 
     def on_slash(self, param, payload):
         ret = {

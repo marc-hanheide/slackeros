@@ -70,6 +70,7 @@ class RosConnector(SlackConnector):
 
         self.default_level = 'off'
         self.last_published = defaultdict(rospy.Time)
+        self.throttle_attachment_buffer = defaultdict(list)
         self.throttle_count = defaultdict(int)
         self.active_loggers = defaultdict(lambda: self.default_level)
         if loggers:
@@ -150,34 +151,66 @@ class RosConnector(SlackConnector):
         return d
 
     def _to_slack_cb(self, msg, topic):
-        rospy.loginfo('msg received on topic %s' % topic)
+
+        def __generate_attachment(topic, msg):
+            d = self.__generate_output(msg)
+            att = {
+                        'text': "```\n%s\n```" % d,
+                        'author_name': (
+                            'published by node %s' %
+                            msg._connection_header['callerid'])
+                }
+
+            self.throttle_attachment_buffer[topic].append(att)
+
+        rospy.logdebug('msg received on topic %s' % topic)
         last_published = self.last_published[topic]
         now = rospy.Time.now()
         duration_since_last = now - last_published
+        __generate_attachment(topic, msg)
         if duration_since_last.to_sec() > self.throttle_secs[topic]:
-            d = self.__generate_output(msg)
             # rospy.loginfo('new message to go to Slack: %s' % d)
             self.send({
-                'text': '_New Information on topic %s_' % topic,
-                'attachments': [
-                    {
-                        'text': "```\n%s\n```" % d,
-                        'author_name': topic,
-                        'footer': (
-                            'last of %d throttled events.' %
-                            self.throttle_count[topic]
-                            if self.throttle_count[topic] > 0
-                            else 'last and only event since last published')
-                    }
-                ]
+                'text': '_New Information on topic `%s`_' % topic,
+                'attachments': self.throttle_attachment_buffer[topic]
             })
             self.last_published[topic] = now
             self.throttle_count[topic] = 0
+            self.throttle_attachment_buffer[topic] = []
         else:
             rospy.loginfo('topic %s throttled, not publishing' % topic)
             self.throttle_count[topic] += 1
 
     def _log_received(self, log_entry, topic):
+
+        def __generate_attachment(logger, log_entry):
+            att = {
+                'text': (
+                    '> %s\n'
+                    '_level:_ `%s`\n'
+                    '_file:_ `%s`\n'
+                    '_function:_ `%s`\n'
+                    '_line:_ `%s`\n' %
+                    (
+                        log_entry.msg,
+                        RosConnector.REVERSE_LEVEL_SET[
+                            log_entry.level],
+                        log_entry.file,
+                        log_entry.function,
+                        log_entry.line
+                        )
+                    ),
+                'author_name': '/rosout from "%s"' % logger
+                # 'footer': (
+                #     'last of %d throttled events.' %
+                #     self.throttle_count['__logger__' + logger]
+                #     if self.throttle_count['__logger__' + logger] > 0
+                #     else 'last and only event since last published')
+                }
+
+            print att
+            self.throttle_attachment_buffer['__logger__' + logger].append(att)
+
         # make sure we are not listening to ourselves
         if log_entry.name == rospy.get_name():
             return
@@ -192,44 +225,22 @@ class RosConnector(SlackConnector):
         last_published = self.last_published['__logger__' + logger]
 
         duration_since_last = now - last_published
+        __generate_attachment(logger, log_entry)
         if (
             duration_since_last.to_sec() > self.throttle_secs[topic]
         ):
             # rospy.loginfo('new message to go to Slack: %s' % d)
             self.send({
-                'text': '*`%s`* from node: `%s`\n> *%s*' % (
-                    RosConnector.REVERSE_LEVEL_SET[
-                                    log_entry.level],
+                'text': '*Logging Event* from node: `%s`' % (
                     logger,
-                    log_entry.msg
                     ),
-                'attachments': [
-                    {
-                        'text': (
-                            '_file:_ `%s`\n'
-                            '_function:_ `%s`\n'
-                            '_line:_ `%s`\n'
-                            '_topics:_ `%s`\n' %
-                            (
-                                log_entry.file,
-                                log_entry.function,
-                                log_entry.line,
-                                log_entry.topics,
-                                )
-                            ),
-                        'author_name': '/rosout from "%s"' % logger,
-                        'footer': (
-                            'last of %d throttled events.' %
-                            self.throttle_count['__logger__' + logger]
-                            if self.throttle_count['__logger__' + logger] > 0
-                            else 'last and only event since last published')
-                    }
-                ]
+                'attachments': (
+                    self.throttle_attachment_buffer['__logger__' + logger])
             })
             self.last_published['__logger__' + logger] = now
             self.throttle_count['__logger__' + logger] = 0
         else:
-            rospy.loginfo('logger %s throttled, not publishing' % logger)
+            rospy.logdebug('logger %s throttled, not publishing' % logger)
             self.throttle_count['__logger__' + logger] += 1
 
     def _roslogger(self, args):
