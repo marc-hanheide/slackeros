@@ -2,6 +2,16 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge branch 'no_dropping'
+* date
+* fixed clearing buffer
+* Merge pull request `#7 <https://github.com/marc-hanheide/slackeros/issues/7>`_ from marc-hanheide/no_dropping
+  no dropping of messages in throttling
+* no dropping of messages in throttling
+* Contributors: Marc Hanheide
+
 0.0.4 (2018-09-17)
 ------------------
 * roslogger works. fixes `#4 <https://github.com/marc-hanheide/slackeros/issues/4>`_
