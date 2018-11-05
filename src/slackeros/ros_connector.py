@@ -159,7 +159,8 @@ class RosConnector(SlackConnector):
                         'text': "```\n%s\n```" % d,
                         'author_name': (
                             'published by node %s' %
-                            msg._connection_header['callerid'])
+                            msg._connection_header['callerid']),
+                        'footer': '%s' % str(datetime.now())
                 }
 
             self.throttle_attachment_buffer[topic].append(att)
