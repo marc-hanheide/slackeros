@@ -2,8 +2,8 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.5 (2018-11-05)
+------------------
 * Merge branch 'no_dropping'
 * date
 * fixed clearing buffer
