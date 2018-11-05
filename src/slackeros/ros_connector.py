@@ -13,6 +13,7 @@ import roslib
 import rosmsg
 from collections import defaultdict
 from rosgraph_msgs.msg import Log
+from datetime import datetime
 
 
 def __signal_handler(signum, frame):
@@ -158,7 +159,8 @@ class RosConnector(SlackConnector):
                         'text': "```\n%s\n```" % d,
                         'author_name': (
                             'published by node %s' %
-                            msg._connection_header['callerid'])
+                            msg._connection_header['callerid']),
+                        'footer': '%s' % str(datetime.now())
                 }
 
             self.throttle_attachment_buffer[topic].append(att)
@@ -200,7 +202,9 @@ class RosConnector(SlackConnector):
                         log_entry.line
                         )
                     ),
-                'author_name': '/rosout from "%s"' % logger
+                'author_name': '/rosout from "%s"' % logger,
+                'footer': '%s' % str(datetime.utcfromtimestamp(
+                            log_entry.header.stamp.secs))
                 # 'footer': (
                 #     'last of %d throttled events.' %
                 #     self.throttle_count['__logger__' + logger]
@@ -239,6 +243,7 @@ class RosConnector(SlackConnector):
             })
             self.last_published['__logger__' + logger] = now
             self.throttle_count['__logger__' + logger] = 0
+            self.throttle_attachment_buffer['__logger__' + logger] = []
         else:
             rospy.logdebug('logger %s throttled, not publishing' % logger)
             self.throttle_count['__logger__' + logger] += 1
