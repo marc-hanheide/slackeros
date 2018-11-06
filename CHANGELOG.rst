@@ -2,8 +2,8 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.1.0 (2018-11-06)
+------------------
 * Merge pull request `#9 <https://github.com/marc-hanheide/slackeros/issues/9>`_ from marc-hanheide/no_dropping
   massive refactoring and queue processing
 * massive refactoring and queue processing
