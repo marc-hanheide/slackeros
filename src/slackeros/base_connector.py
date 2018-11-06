@@ -37,7 +37,8 @@ class SlackConnector(web.application):
         self.whitelist_channels = set(whitelist_channels)
         self.whitelist_users = set(whitelist_users)
         self.urls = (
-            prefix + '/slash/(.+)', 'slash_dispatcher'
+            prefix + '/slash/(.+)', 'slash_dispatcher',
+            prefix + '/action', 'action_dispatcher'
         )
 
         web.application.__init__(self, self.urls, SlackConnector.__dict__)
@@ -78,6 +79,36 @@ class SlackConnector(web.application):
                 ret = controller._generate_message(cb_ret)
             return dumps(ret)
 
+    class action_dispatcher():
+        def GET(self):
+            return web.notacceptable()
+
+        def POST(self):
+            payload = dict(web.input())
+            web.header('Content-Type', 'application/json')
+            ret = {
+                'text': (
+                            '*Sorry, the channel "%s" or the user "%s" are not'
+                            ' permitted to run this action.*' % (
+                                payload['channel_id'],
+                                payload['user_name']
+                            )
+                        )
+            }
+            controller = web.config.controller
+            if (
+                (
+                    not bool(controller.whitelist_channels) or
+                    payload['channel_id'] in controller.whitelist_channels
+                ) and (
+                    not bool(controller.whitelist_users) or
+                    payload['user_name'] in controller.whitelist_users
+                )
+            ):
+                cb_ret = controller.on_action(payload)
+                ret = controller._generate_message(cb_ret)
+            return dumps(ret)
+
     def _generate_message(self, msg):
         if type(msg) is dict:
             ret = msg
@@ -107,6 +138,20 @@ class SlackConnector(web.application):
         }
         self.send('incoming!')
         logging.info('on_slash(%s, %s)', param, pformat(payload))
+        return ret
+
+    def on_action(self, payload):
+        ret = {
+            'text': '_default handler called_',
+            'attachments': [
+                {
+                    "title": "Synopsis",
+                    "text": "```\n%s\n```" % pformat(payload)
+                }
+            ]
+        }
+        self.send('incoming!')
+        logging.info('on_action(%s)', pformat(payload))
         return ret
 
     # def run(self):
