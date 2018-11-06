@@ -128,7 +128,7 @@ class SlackConnector(web.application):
 
     def on_slash(self, param, payload):
         ret = {
-            'text': '_default handler called_',
+            'text': '_default slash handler called_',
             'attachments': [
                 {
                     "title": "Synopsis",
@@ -136,13 +136,13 @@ class SlackConnector(web.application):
                 }
             ]
         }
-        self.send('incoming!')
+        self.send(ret)
         logging.info('on_slash(%s, %s)', param, pformat(payload))
         return ret
 
     def on_action(self, payload):
         ret = {
-            'text': '_default handler called_',
+            'text': '_default action handler called_',
             'attachments': [
                 {
                     "title": "Synopsis",
@@ -150,7 +150,7 @@ class SlackConnector(web.application):
                 }
             ]
         }
-        self.send('incoming!')
+        self.send(ret)
         logging.info('on_action(%s)', pformat(payload))
         return ret
 
