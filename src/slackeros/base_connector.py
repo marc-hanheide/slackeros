@@ -95,6 +95,13 @@ class SlackConnector(web.application):
             except Exception as e:
                 print('exception when sending: %s:\n%s' % (str(e), str(msg)))
 
+    def send_image(self, params, file):
+        if self.incoming_webhook:
+            try:
+                post('https://slack.com/api/files.upload', params=params, files=file)
+            except Exception as e:
+                print('exception when sending: %s:\n%s' % (str(e), str(msg)))
+
     def on_slash(self, param, payload):
         ret = {
             'text': '_default handler called_',

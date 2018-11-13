@@ -16,6 +16,10 @@ if __name__ == '__main__':
         '~webhook',
         'https://hooks.slack.com/services/'
         'XXX/XXX/XXX')
+    token = rospy.get_param(
+        '~access_token', '')
+    upload_images = rospy.get_param(
+        '~upload_images', True)
     wl_users = rospy.get_param(
         '~users', '')
     wl_channels = rospy.get_param(
@@ -56,6 +60,8 @@ if __name__ == '__main__':
 
     sc = RosConnector(
         incoming_webhook=hook,
+        access_token=token,
+        upload_images=upload_images,
         whitelist_users=wl_users.split(),
         whitelist_channels=wl_channels.split(),
         topics=topics.split(),
