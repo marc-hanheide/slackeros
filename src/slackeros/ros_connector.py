@@ -12,7 +12,9 @@ import argparse
 import roslib
 import rosmsg
 from collections import defaultdict
-from rosgraph_msgs.msg import Log
+from datetime import datetime
+from Queue import Queue, Empty
+
 #
 import cv2
 from sensor_msgs.msg import Image
@@ -43,6 +45,14 @@ class RosConnector(SlackConnector):
         8: 'error',
         16: 'fatal'
     }
+    LEVEL_COLORS = {
+        0: '#000000',
+        1: '#CCCCCC',
+        2: '#888888',
+        4: '#FF8C00',
+        8: '#FF0000',
+        16: '#FF0000'
+    }
 
     def __init__(
         self,
@@ -61,8 +71,10 @@ class RosConnector(SlackConnector):
         self.whitelist_channels = set(whitelist_channels)
         self.whitelist_users = set(whitelist_users)
         self.topics = set(topics)
-        self.throttle_secs = defaultdict(lambda: throttle_secs)
         self.max_lines = max_lines
+        self.messages = Queue(0)
+        self.last_published = defaultdict(rospy.Time)
+        self.throttle_secs = throttle_secs
 
         SlackConnector.__init__(
             self, incoming_webhook,
@@ -75,8 +87,8 @@ class RosConnector(SlackConnector):
             self._subscribe(t)
 
         self.default_level = 'off'
-        self.last_published = defaultdict(rospy.Time)
-        self.throttle_count = defaultdict(int)
+        self.attachment_buffer = defaultdict(list)
+        self.message_header = defaultdict(lambda: 'new data')
         self.active_loggers = defaultdict(lambda: self.default_level)
         if loggers:
             self.logger_enabled = True
@@ -84,6 +96,40 @@ class RosConnector(SlackConnector):
             self._subscribe('/rosout', self._log_received)
         else:
             self.logger_enabled = False
+        self.last_attachment = defaultdict(lambda: '')
+
+        self.queue_worker = Thread(target=self.process_queue)
+        self.queue_worker.setDaemon(True)
+        self.queue_worker.start()
+
+    def process_queue(self):
+
+        def __send_out(t):
+            if self.attachment_buffer[t]:
+                m = {
+                    'text': self.message_header[t],
+                    'attachments': self.attachment_buffer[t]
+                }
+                rospy.logdebug('sending out: %s' % str(m))
+                self.send(m)
+                self.attachment_buffer[t] = []
+
+        while not rospy.is_shutdown():
+            try:
+                (topic, attachment) = self.messages.get(
+                    True, timeout=self.throttle_secs)
+                self.attachment_buffer[topic].append(attachment)
+
+                time_elapsed = rospy.Time.now() - self.last_published[topic]
+                if time_elapsed.to_sec() > self.throttle_secs:
+                    self.last_published[topic] = rospy.Time.now()
+                    __send_out(topic)
+
+                self.messages.task_done()
+            except Empty:
+                rospy.logdebug('wait time up, time to flush all')
+                for t in self.attachment_buffer:
+                    __send_out(t)
 
     def _subscribe(self, topic, cb=None):
         class DynSub(Thread):
@@ -155,62 +201,59 @@ class RosConnector(SlackConnector):
             )
         return d
 
+    def _push(self, topic, attachment):
+        self.messages.put((topic, attachment,))
+
     def _to_slack_cb(self, msg, topic):
-        rospy.loginfo('msg received on topic %s' % topic)
-        last_published = self.last_published[topic]
-        now = rospy.Time.now()
-        duration_since_last = now - last_published
-        if duration_since_last.to_sec() > self.throttle_secs[topic]:
-            d = self.__generate_output(msg)
-            # rospy.loginfo('new message to go to Slack: %s' % d)
-            self.send({
-                'text': '_New Information on topic %s_' % topic,
-                'attachments': [
-                    {
-                        'text': "```\n%s\n```" % d,
-                        'author_name': topic,
-                        'footer': (
-                            'last of %d throttled events.' %
-                            self.throttle_count[topic]
-                            if self.throttle_count[topic] > 0
-                            else 'last and only event since last published')
-                    }
-                ]
-            })
-            # upload image
-            image = rospy.wait_for_message("/head_xtion/rgb/image_mono", Image, timeout=0.2)
-            try:
-                # Convert your ROS Image message to OpenCV2
-                cv2_img = bridge.imgmsg_to_cv2(msg, "mono8")
-            except CvBridgeError, e:
-                rospy.logwarn(e)
-            else:
-                # Save your OpenCV2 image as a jpeg 
-                image_file = 'camera_image.jpeg'
-                cv2.imwrite(image_file, cv2_img)
-                rospy.loginfo("Image to be uploaded saved in %s" % image_file)
-                # upload to slack
-                data = {
-                    'token': self.access_token,
-                    'channels': 'administration',
-                    'file': open(image_file, 'rb'),
-                    'filename': image_file,
-                    'filetype': 'jpeg',
-                    'title': 'Image from the robot camera'
-                }
-                headers = {'Content-type': 'multipart/form-data'}
-                self.send(data, headers)
-            self.last_published[topic] = now
-            self.throttle_count[topic] = 0
-        else:
-            rospy.loginfo('topic %s throttled, not publishing' % topic)
-            self.throttle_count[topic] += 1
+
+        rospy.logdebug('msg received on topic %s' % topic)
+        d = self.__generate_output(msg)
+        att = {
+                'text': "```\n%s\n```" % d,
+                "mrkdwn_in": ["text", "pretext"],
+                'pretext': (
+                    'published by node `%s` on `%s`' %
+                    (msg._connection_header['callerid'], topic)),
+                'footer': '%s' % str(datetime.now()),
+                "fallback": d,
+                "color": '#0000AA',
+                'ts': rospy.Time.now().secs
+            }
+        self.message_header[topic] = (
+            '_new message(s) on : `%s`_' %
+            topic
+            )
+
+        self._push(topic, att)
+	# upload image
+	image = rospy.wait_for_message("/head_xtion/rgb/image_mono", Image, timeout=0.2)
+	try:
+		# Convert your ROS Image message to OpenCV2
+		cv2_img = bridge.imgmsg_to_cv2(msg, "mono8")
+	except CvBridgeError, e:
+		rospy.logwarn(e)
+	else:
+		# Save your OpenCV2 image as a jpeg 
+		image_file = 'camera_image.jpeg'
+		cv2.imwrite(image_file, cv2_img)
+		rospy.loginfo("Image to be uploaded saved in %s" % image_file)
+		# upload to slack
+		data = {
+		    'token': self.access_token,
+		    'channels': 'administration',
+		    'file': open(image_file, 'rb'),
+		    'filename': image_file,
+		    'filetype': 'jpeg',
+		    'title': 'Image from the robot camera'
+		}
+		headers = {'Content-type': 'multipart/form-data'}
+		self.send(data, headers)
 
     def _log_received(self, log_entry, topic):
         # make sure we are not listening to ourselves
         if log_entry.name == rospy.get_name():
             return
-        now = rospy.Time.now()
+
         level = log_entry.level
         logger = log_entry.name
 
@@ -218,48 +261,39 @@ class RosConnector(SlackConnector):
                self.active_loggers[logger]
                ]:
             return
-        last_published = self.last_published['__logger__' + logger]
 
-        duration_since_last = now - last_published
-        if (
-            duration_since_last.to_sec() > self.throttle_secs[topic]
-        ):
-            # rospy.loginfo('new message to go to Slack: %s' % d)
-            self.send({
-                'text': '*`%s`* from node: `%s`\n> *%s*' % (
+        att = {
+            'text': (
+                '> %s\n'
+                '_level:_ `%s`\n'
+                '_file:_ `%s`\n'
+                '_function:_ `%s`\n'
+                '_line:_ `%s`\n' %
+                (
+                    log_entry.msg,
                     RosConnector.REVERSE_LEVEL_SET[
-                                    log_entry.level],
-                    logger,
-                    log_entry.msg
-                    ),
-                'attachments': [
-                    {
-                        'text': (
-                            '_file:_ `%s`\n'
-                            '_function:_ `%s`\n'
-                            '_line:_ `%s`\n'
-                            '_topics:_ `%s`\n' %
-                            (
-                                log_entry.file,
-                                log_entry.function,
-                                log_entry.line,
-                                log_entry.topics,
-                                )
-                            ),
-                        'author_name': '/rosout from "%s"' % logger,
-                        'footer': (
-                            'last of %d throttled events.' %
-                            self.throttle_count['__logger__' + logger]
-                            if self.throttle_count['__logger__' + logger] > 0
-                            else 'last and only event since last published')
-                    }
-                ]
-            })
-            self.last_published['__logger__' + logger] = now
-            self.throttle_count['__logger__' + logger] = 0
-        else:
-            rospy.loginfo('logger %s throttled, not publishing' % logger)
-            self.throttle_count['__logger__' + logger] += 1
+                        log_entry.level],
+                    log_entry.file,
+                    log_entry.function,
+                    log_entry.line
+                    )
+                ),
+            "mrkdwn_in": ["text", "pretext"],
+            "fallback": str(log_entry),
+            "pretext": "*%s*" % RosConnector.REVERSE_LEVEL_SET[
+                        log_entry.level],
+            "color": self.LEVEL_COLORS[level],
+            'author_name': '/rosout from "%s"' % logger,
+            'footer': '%s' % str(datetime.utcfromtimestamp(
+                        log_entry.header.stamp.secs)),
+            'ts': log_entry.header.stamp.secs
+            }
+
+        self.message_header['__logger__' + logger] = (
+            '*Logging Event* from node: `%s`' %
+            logger
+            )
+        self._push('__logger__' + logger, att)
 
     def _roslogger(self, args):
         parser = argparse.ArgumentParser(prog='/roslogger')
