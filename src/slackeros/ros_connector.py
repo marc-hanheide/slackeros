@@ -18,10 +18,11 @@ from Queue import Queue, Empty
 import cv2
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
+import tempfile
 
 def __signal_handler(signum, frame):
     print "stopped."
-    _exit(signal.SIGTERM)
+    os._exit(signal.SIGTERM)
 
 
 class RosConnector(SlackConnector):
@@ -75,6 +76,9 @@ class RosConnector(SlackConnector):
         self.messages = Queue(0)
         self.last_published = defaultdict(rospy.Time)
         self.throttle_secs = throttle_secs
+
+        self.image_upload_title = 'Image from the robot camera'
+        self.image_format = "jpeg"
 
 	self.bridge = CvBridge()
         SlackConnector.__init__(
@@ -133,23 +137,36 @@ class RosConnector(SlackConnector):
                     cv2_img = self.bridge.imgmsg_to_cv2(image, self.type)
                 except CvBridgeError, e:
                     rospy.logwarn(e)
-                else:
-                    # Save your OpenCV2 image as a jpeg
-                    image_file = '/tmp/camera_image.jpeg'
-                    cv2.imwrite(image_file, cv2_img)
-                    # upload to slack
-                    params = {
+                    return
+
+                # Save your OpenCV2 image
+                image_file, image_path = tempfile.mkstemp('.' + self.image_format)
+                try:
+                    cv2.imwrite(image_path, cv2_img)
+                except Exception as e:
+                    rospy.logwarn("Exception writing image to file %s" % image_path)
+                    return
+
+                # upload to slack
+                params = {
                     'token': self.access_token,
-                    'channels': '#administration',
-                    'filename': image_file,
-                    'filetype': 'jpeg',
-                    'title': 'Image from the robot camera'
-                    }
-                    file = {
-                        'file': open(image_file, 'rb')
-                    }
-                    self.send_image(params, file)
-                    rospy.loginfo("Image %s uploaded to slack with encoding %s" % (image_file, self.type))
+                    'channels': self.whitelist_channels,
+                    'filename': image_path,
+                    'filetype': self.image_format,
+                    'title': self.image_upload_title
+                }
+                file = {
+                    'file': open(image_path, 'rb')
+                }
+
+                # remove image
+                try:
+                    os.remove(image_path)
+                except Exception as e:
+                    rospy.logwarn("Exception removing the image %s" % image_path)
+
+                self.send_image(params, file)
+                rospy.loginfo("Image %s uploaded to slack with encoding %s" % (image_path, self.type))
 
         ImageUploader(self.access_token, self.bridge, self.send_image, type, self.image_format, self.whitelist_channels, self.image_upload_title, topic).start()
 
