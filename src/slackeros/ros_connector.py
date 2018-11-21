@@ -59,6 +59,7 @@ class RosConnector(SlackConnector):
         access_token=None,
         upload_images=False,
         whitelist_channels=[],
+        image_up_channels=[],
         whitelist_users=[],
         topics=[ROS_PREFIX + '/to_slack'],
         prefix='',
@@ -70,6 +71,7 @@ class RosConnector(SlackConnector):
         self.access_token = access_token
         self.upload_images = upload_images
         self.whitelist_channels = set(whitelist_channels)
+        self.image_up_channels = set(image_up_channels)
         self.whitelist_users = set(whitelist_users)
         self.topics = set(topics)
         self.max_lines = max_lines
@@ -107,17 +109,17 @@ class RosConnector(SlackConnector):
         self.queue_worker.setDaemon(True)
         self.queue_worker.start()
 
-    def log_image(self, type=None, topic='/head_xtion/rgb/image_color'):
+    def log_image(self, type=None, topic='/head_xtion/rgb/image_color', channels=[]):
         class ImageUploader(Thread):
 
-            def __init__(self, access_token, bridge, send_image, type=None, image_format='jpeg', whitelist_channels=[], image_upload_title="", topic='/head_xtion/rgb/image_color'):
+            def __init__(self, access_token, bridge, send_image, type=None, image_format='jpeg', channels=[], image_upload_title="", topic='/head_xtion/rgb/image_color'):
                 Thread.__init__(self)
                 self.access_token = access_token
                 self.bridge = bridge
                 self.send_image = send_image
                 self.type = type
                 self.image_format = image_format
-                self.whitelist_channels = whitelist_channels
+                self.channels = channels
                 self.image_upload_title = image_upload_title
                 self.topic = topic
 
@@ -150,7 +152,7 @@ class RosConnector(SlackConnector):
                 # upload to slack
                 params = {
                     'token': self.access_token,
-                    'channels': self.whitelist_channels,
+                    'channels': list(self.channels),
                     'filename': image_path,
                     'filetype': self.image_format,
                     'title': self.image_upload_title
@@ -166,9 +168,11 @@ class RosConnector(SlackConnector):
                     rospy.logwarn("Exception removing the image %s" % image_path)
 
                 self.send_image(params, file)
-                rospy.loginfo("Image %s uploaded to slack with encoding %s" % (image_path, self.type))
+                rospy.loginfo("Image %s uploaded to slack with encoding %s to channels %s" % (image_path, self.type, str(list(self.channels))))
 
-        ImageUploader(self.access_token, self.bridge, self.send_image, type, self.image_format, self.whitelist_channels, self.image_upload_title, topic).start()
+        if not bool(channels):
+            channels = self.image_up_channels
+        ImageUploader(self.access_token, self.bridge, self.send_image, type, self.image_format, channels, self.image_upload_title, topic).start()
 
     def process_queue(self):
 
@@ -237,13 +241,13 @@ class RosConnector(SlackConnector):
             self.subs[topic].unregister()
             del self.subs[topic]
 
-    def _poll(self, topic, timeout=1.5):
+    def _poll(self, topic, payload, timeout=1.5):
         msg_class, real_topic, _ = get_topic_class(
             topic, blocking=False)
         if msg_class is None:
             return '`topic %s not found`' % topic
         elif msg_class == Image:
-            self.log_image(topic=topic)
+            self.log_image(topic=topic, channels=[payload["channel_id"]])
             return 'uploading image...'
         try:
             msg = rospy.wait_for_message(
@@ -417,7 +421,7 @@ class RosConnector(SlackConnector):
             }
 
 
-    def _rostopic(self, args):
+    def _rostopic(self, args, payload):
         parser = argparse.ArgumentParser(prog='/rostopic')
         subparsers = parser.add_subparsers(dest='cmd',
                                            help='sub-command')
@@ -451,7 +455,7 @@ class RosConnector(SlackConnector):
             self._unsubscribe(args.topic)
             return 'unsubscribing from `%s`' % args.topic
         elif args.cmd == 'poll':
-            return '```\n%s\n```' % self._poll(args.topic)
+            return '```\n%s\n```' % self._poll(args.topic, payload)
         elif args.cmd == 'list':
             topics = rospy.get_published_topics()
             tops = [('%s [%s]' % (t[0], t[1])) for t in topics]
@@ -568,7 +572,7 @@ class RosConnector(SlackConnector):
         args = payload['text'].split(' ')
 
         if service == 'rostopic':
-            return self._rostopic(args)
+            return self._rostopic(args, payload)
         elif service == 'rosservice':
             return self._rosservice(args)
         elif service == 'roslogger':
@@ -591,6 +595,8 @@ if __name__ == '__main__':
         '~users', '')
     wl_channels = rospy.get_param(
         '~channels', '')
+    image_up_channels = rospy.get_param(
+        '~image_upload_channels', '')
     topics = rospy.get_param(
         '~topics', '')
     url_prefix = rospy.get_param(
@@ -600,6 +606,7 @@ if __name__ == '__main__':
         access_token=token,
         whitelist_users=wl_users.split(' '),
         whitelist_channels=wl_channels.split(' '),
+        image_up_channels=image_up_channels.split(' '),
         topics=topics.split(' '),
         prefix=url_prefix
     )

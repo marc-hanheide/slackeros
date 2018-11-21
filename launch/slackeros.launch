@@ -4,6 +4,7 @@
 <arg name="upload_images" default="true" />
 <arg name="users" default=""/>
 <arg name="channels" default=""/>
+<arg name="image_upload_channels" default="" />
 <arg name="topics" default="/slackeros/to_slack /slackeros/warnings"/>
 <arg name="loggers" default="/rosout:error /amcl:warn"/>
 <arg name="url_prefix" default=""/>
@@ -19,6 +20,7 @@
         <param name="~upload_images" value="$(arg upload_images)" />
 	<param name="~users" value="$(arg users)" />
 	<param name="~channels" value="$(arg channels)" />
+        <param name="~image_upload_channels" value="$(arg image_upload_channels)" />
 	<param name="~topics" value="$(arg topics)" />
 	<param name="~loggers" value="$(arg loggers)" />
 	<param name="~url_prefix" value="$(arg url_prefix)" />
