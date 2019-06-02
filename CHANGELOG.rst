@@ -2,8 +2,8 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.0 (2019-06-02)
+------------------
 * Merge pull request `#11 <https://github.com/marc-hanheide/slackeros/issues/11>`_ from francescodelduchetto/master
   Uploading an image with each message sent
 * parameter for img upload channels and take channel from payload when using slash command
