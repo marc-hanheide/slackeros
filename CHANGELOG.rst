@@ -2,6 +2,19 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge pull request `#11 <https://github.com/marc-hanheide/slackeros/issues/11>`_ from francescodelduchetto/master
+  Uploading an image with each message sent
+* parameter for img upload channels and take channel from payload when using slash command
+* putting some try catches and parameter names
+* fix missing parameters to be passed to ImageUPloader
+* automatically select the encoding from the image msg
+* possibility of uploading an image in the administration channel every time a message is sent
+* Merge remote-tracking branch 'upstream/master'
+* first attempt to images upload after any warning
+* Contributors: Lindsey User, Marc Hanheide, francescodelduchetto
+
 0.1.0 (2018-11-06)
 ------------------
 * Merge pull request `#9 <https://github.com/marc-hanheide/slackeros/issues/9>`_ from marc-hanheide/no_dropping
