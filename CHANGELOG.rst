@@ -2,6 +2,14 @@
 Changelog for package slackeros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge pull request `#12 <https://github.com/marc-hanheide/slackeros/issues/12>`_ from marc-hanheide/format_and_name
+  Format and name
+* identify author as hostname
+* mostly formatting
+* Contributors: Marc Hanheide
+
 0.2.0 (2019-06-02)
 ------------------
 * Merge pull request `#11 <https://github.com/marc-hanheide/slackeros/issues/11>`_ from francescodelduchetto/master
