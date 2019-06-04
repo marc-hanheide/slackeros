@@ -31,7 +31,8 @@ class SlackConnector(web.application):
         incoming_webhook=None,
         whitelist_channels=[],
         whitelist_users=[],
-        prefix=''
+        prefix='',
+        sender_name='slackeros'
     ):
         self.incoming_webhook = incoming_webhook
         self.whitelist_channels = set(whitelist_channels)
@@ -39,6 +40,7 @@ class SlackConnector(web.application):
         self.urls = (
             prefix + '/slash/(.+)', 'slash_dispatcher'
         )
+        self.sender_name = sender_name
 
         web.application.__init__(self, self.urls, SlackConnector.__dict__)
         web.config.update({"controller": self})
@@ -91,16 +93,21 @@ class SlackConnector(web.application):
     def send(self, msg, headers={'Content-type': 'application/json'}):
         if self.incoming_webhook:
             try:
-                post(self.incoming_webhook, json=self._generate_message(msg), headers=headers)
+                post(
+                    self.incoming_webhook, json=self._generate_message(msg),
+                    headers=headers)
             except Exception as e:
                 print('exception when sending: %s:\n%s' % (str(e), str(msg)))
 
     def send_image(self, params, file):
         if self.incoming_webhook:
             try:
-                post('https://slack.com/api/files.upload', params=params, files=file)
+                post(
+                    'https://slack.com/api/files.upload',
+                    params=params, files=file)
             except Exception as e:
-                print('exception when sending: %s:\n%s' % (str(e), str(msg)))
+                print('exception when sending: %s' % (
+                    str(e)))
 
     def on_slash(self, param, payload):
         ret = {

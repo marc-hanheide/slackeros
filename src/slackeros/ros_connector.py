@@ -20,6 +20,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import tempfile
 
+
 def __signal_handler(signum, frame):
     print "stopped."
     os._exit(signal.SIGTERM)
@@ -63,6 +64,7 @@ class RosConnector(SlackConnector):
         whitelist_users=[],
         topics=[ROS_PREFIX + '/to_slack'],
         prefix='',
+        sender_name='slackeros',
         loggers={},
         throttle_secs=5,
         max_lines=50
@@ -82,10 +84,10 @@ class RosConnector(SlackConnector):
         self.image_upload_title = 'Image from the robot camera'
         self.image_format = "jpeg"
 
-	self.bridge = CvBridge()
+        self.bridge = CvBridge()
         SlackConnector.__init__(
             self, incoming_webhook,
-            whitelist_channels, whitelist_users, prefix)
+            whitelist_channels, whitelist_users, prefix, sender_name)
 
         self.slash_pub = rospy.Publisher('~slash_cmd', String, queue_size=1)
         self.subs = {}
@@ -109,10 +111,18 @@ class RosConnector(SlackConnector):
         self.queue_worker.setDaemon(True)
         self.queue_worker.start()
 
-    def log_image(self, type=None, topic='/head_xtion/rgb/image_color', channels=[]):
+    def log_image(
+        self, type=None,
+        topic='/head_xtion/rgb/image_color',
+        channels=[]
+    ):
         class ImageUploader(Thread):
 
-            def __init__(self, access_token, bridge, send_image, type=None, image_format='jpeg', channels=[], image_upload_title="", topic='/head_xtion/rgb/image_color'):
+            def __init__(
+                self, access_token, bridge, send_image, type=None,
+                image_format='jpeg', channels=[], image_upload_title="",
+                topic='/head_xtion/rgb/image_color'
+            ):
                 Thread.__init__(self)
                 self.access_token = access_token
                 self.bridge = bridge
@@ -126,7 +136,8 @@ class RosConnector(SlackConnector):
             def run(self):
                 # upload image
                 try:
-                    image = rospy.wait_for_message(self.topic, Image, timeout=1.5)
+                    image = rospy.wait_for_message(
+                        self.topic, Image, timeout=1.5)
                 except rospy.ROSException as e:
                     rospy.logwarn("No image retrieved before timeout")
                     return
@@ -135,18 +146,21 @@ class RosConnector(SlackConnector):
                     self.type = image.encoding
                 try:
                     # Convert your ROS Image message to OpenCV2
-                    if self.type == "rgb8": self.type = "bgr8"
+                    if self.type == "rgb8":
+                        self.type = "bgr8"
                     cv2_img = self.bridge.imgmsg_to_cv2(image, self.type)
                 except CvBridgeError, e:
                     rospy.logwarn(e)
                     return
 
                 # Save your OpenCV2 image
-                image_file, image_path = tempfile.mkstemp('.' + self.image_format)
+                image_file, image_path = tempfile.mkstemp(
+                    '.' + self.image_format)
                 try:
                     cv2.imwrite(image_path, cv2_img)
                 except Exception as e:
-                    rospy.logwarn("Exception writing image to file %s" % image_path)
+                    rospy.logwarn(
+                        "Exception writing image to file %s" % image_path)
                     return
 
                 # upload to slack
@@ -165,14 +179,21 @@ class RosConnector(SlackConnector):
                 try:
                     os.remove(image_path)
                 except Exception as e:
-                    rospy.logwarn("Exception removing the image %s" % image_path)
+                    rospy.logwarn(
+                        "Exception removing the image %s" % image_path)
 
                 self.send_image(params, file)
-                rospy.loginfo("Image %s uploaded to slack with encoding %s to channels %s" % (image_path, self.type, str(list(self.channels))))
+                rospy.loginfo(
+                    "Image %s uploaded to slack with encoding"
+                    " %s to channels %s" % (
+                        image_path, self.type, str(list(self.channels))))
 
         if not bool(channels):
             channels = self.image_up_channels
-        ImageUploader(self.access_token, self.bridge, self.send_image, type, self.image_format, channels, self.image_upload_title, topic).start()
+        ImageUploader(
+            self.access_token, self.bridge,
+            self.send_image, type, self.image_format, channels,
+            self.image_upload_title, topic).start()
 
     def process_queue(self):
 
@@ -185,7 +206,7 @@ class RosConnector(SlackConnector):
                 rospy.logdebug('sending out: %s' % str(m))
                 self.send(m)
                 self.attachment_buffer[t] = []
-		if self.upload_images:
+        if self.upload_images:
                     self.log_image(type="rgb8")
 
         while not rospy.is_shutdown():
