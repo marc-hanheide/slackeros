@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-from os import _exit
+from os import _exit, getenv
 import signal
 import rospy
 from slackeros.ros_connector import RosConnector
-
+from socket import gethostname
 
 def __signal_handler(signum, frame):
     print "stopped."
@@ -16,6 +16,9 @@ if __name__ == '__main__':
         '~webhook',
         'https://hooks.slack.com/services/'
         'XXX/XXX/XXX')
+
+    sender_name = rospy.get_param(
+        '~sender_name', gethostname())
     token = rospy.get_param(
         '~access_token', '')
     upload_images = rospy.get_param(
@@ -37,16 +40,18 @@ if __name__ == '__main__':
     rospy.loginfo(
         '\n'
         '  running as %s\n'
-        '    slack message webhoook: ~webhook =    "%s"\n'
-        '    allowed users:          ~users =      "%s"\n'
-        '    allowed channels:       ~channels =   "%s"\n'
-        '    imgs upload channels:   ~img_up_chns ="%s"\n' 
-        '    subscribed topics:      ~topics =     "%s"\n'
-        '    active loggers:         ~loggers =    "%s"\n'
-        '    URL webhook prefix:     ~url_prefix = "%s"\n'
+        '    sender name:            ~sender_name = "%s"\n'
+        '    slack message webhoook: ~webhook =     "%s"\n'
+        '    allowed users:          ~users =       "%s"\n'
+        '    allowed channels:       ~channels =    "%s"\n'
+        '    imgs upload channels:   ~img_up_chns = "%s"\n'
+        '    subscribed topics:      ~topics =      "%s"\n'
+        '    active loggers:         ~loggers =     "%s"\n'
+        '    URL webhook prefix:     ~url_prefix =  "%s"\n'
         '    port:                   ~port = "%d"\n' %
         (
             rospy.get_name(),
+            sender_name,
             hook,
             wl_users,
             wl_channels,
@@ -71,6 +76,7 @@ if __name__ == '__main__':
         image_up_channels=image_up_channels.split(),
         topics=topics.split(),
         loggers=logger_dict,
-        prefix=url_prefix
+        prefix=url_prefix,
+        sender_name=sender_name
     )
     sc.run(port=port)
