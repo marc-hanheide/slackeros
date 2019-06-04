@@ -309,17 +309,22 @@ class RosConnector(SlackConnector):
         att = {
                 'text': "```\n%s\n```" % d,
                 "mrkdwn_in": ["text", "pretext"],
-                'pretext': (
-                    'published by node `%s` on `%s`' %
-                    (msg._connection_header['callerid'], topic)),
+                # 'pretext': (
+                #    'published by node `%s` on `%s`' %
+                #    (msg._connection_header['callerid'], topic)),
                 'footer': '%s' % str(datetime.now()),
                 "fallback": d,
+                'author_name': '%s' % (
+                    msg._connection_header['callerid']),
+                # 'author_name': '%s: %s (by %s)' % (
+                #     self.sender_name, topic,
+                #     msg._connection_header['callerid']),
                 "color": '#0000AA',
                 'ts': rospy.Time.now().secs
             }
         self.message_header[topic] = (
-            '_new message(s) on : `%s`_' %
-            topic
+            '*%s* _`%s`_ ' %
+            (self.sender_name, topic)
             )
 
         self._push(topic, att)
@@ -358,7 +363,7 @@ class RosConnector(SlackConnector):
             "pretext": "*%s*" % RosConnector.REVERSE_LEVEL_SET[
                         log_entry.level],
             "color": self.LEVEL_COLORS[level],
-            'author_name': '/rosout from "%s"' % logger,
+            'author_name': '%s@%s' % (logger, self.sender_name),
             'footer': '%s' % str(datetime.utcfromtimestamp(
                         log_entry.header.stamp.secs)),
             'ts': log_entry.header.stamp.secs
@@ -432,7 +437,7 @@ class RosConnector(SlackConnector):
                         'text': (
                             '*configured loggers:*\n```\n%s\n```'
                             % '\n'.join(loggers)),
-                        'author_name': 'slackerros'
+                        'author_name': self.sender_name
                     }
                 ],
                 'text': (
@@ -486,14 +491,14 @@ class RosConnector(SlackConnector):
                         'text': (
                             '*Currently published topics:*\n```\n%s\n```'
                             % '\n'.join(tops)),
-                        'author_name': 'ROS master'
+                        'author_name': self.sender_name
                     },
                     {
                         'text': (
                             '*Currently subscribed by'
                             ' Slack*:\n```\n%s\n```'
                             % '\n'.join(self.subs)),
-                        'author_name': 'slackeros'
+                        'author_name': self.sender_name
                     }
                 ],
                 'text': '_Topics:_'
@@ -568,7 +573,9 @@ class RosConnector(SlackConnector):
                     'attachments': [
                         {
                             'text': 'Response:\n```\n%s\n```' % resp,
-                            'author_name': args.service
+                            'author_name': '%s@%s' % (
+                                args.service, self.sender_name
+                            )
                         }
                     ],
                     'text': '_called `%s`_' % args.service
@@ -581,7 +588,7 @@ class RosConnector(SlackConnector):
                             'text': (
                                 '*Currently available services:*\n```\n%s\n```'
                                 % '\n'.join(services)),
-                            'author_name': 'ROS master'
+                            'author_name': 'ROS master@%s' % self.sender_name
                         }
                     ],
                     'text': '_Services:_'
